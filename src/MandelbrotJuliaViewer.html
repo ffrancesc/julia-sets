@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ca" >
+
+<head>
+	<meta charset="UTF-8">
+	<title>Mandelbrot i Julia</title>
+	<link rel="stylesheet" type="text/css" href="style.css"></head>
+
+<body>
+	<h1>Conjunts de Mandelbrot i Julia</h1>
+	<div style="margin-left: 40px">
+			<p>Clica un punt del conjunt de Mandelbrot (esquerra) per a veure el seu conjunt de Julia associat (dreta).</p>
+			<p>Clica i arrossega ambdues imatges per a explorar. </p>
+		</div>
+	<div class="entire-thing"> <br>
+		<div class="ad-left">
+			<div style="float: left; clear: all">
+				<input type="button" id="downloadM" value="Descarrega mandelbrot.png"/>
+			</div>
+			<div style="float: top; clear: all" align = "right">
+				iteracions: <input type="number" id="maxIterM" value="100" step="10" style="width: 4em;">
+				&nbsp;&nbsp;<input type="button" id="zoomOutM" value="zoom -"/><input type="button" id="zoomInM" value="zoom +"/>
+			</div>
+			<canvas class="canvasStyle" id="canvasM" width="620" height = "500"></canvas>
+			<p class="status" id="statusM"> </p>
+		</div>
+		<div class="ad-right">
+			<div style="float: left; clear: all">
+				<input type="button" id="downloadJ" value="Descarrega julia.png"/>
+			</div>
+			<div style="float: top; clear: all" align = "right">
+				iteracions: <input type="number" id="maxIterJ" value="100" step="10" style="width: 4em;">
+				&nbsp;&nbsp;<input type="button" id="zoomOutJ" value="zoom -"/><input type="button" id="zoomInJ" value="zoom +"/>
+			</div>
+			<canvas class="canvasStyle" id="canvasJ" width="620" height="500"></canvas>
+			<p class="status" id="statusJ"> </p>
+		</div>
+		<div class="clear"></div>
+	</div>
+	<div align = "center">
+	
+	
+		
+	</div>
+	<script src="index.js"></script>
+</body>
+</html>
