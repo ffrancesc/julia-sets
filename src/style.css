@@ -24,24 +24,28 @@ body {
   margin-bottom: 0;
   border: 1px solid white;
 }
-input {
+
+input, .it-label {
 	color: white;
 	text-align: left;
 	background-color: transparent;
-	border: #444 1px solid;
 	font-size: 10pt;
 	font-family: 'Helvetica', Arial, Lucida Grande, sans-serif;
-	border: 1px solid white;
 }
+
+input {
+  border: 1px solid white;
+}
+
 input:hover { 
 	border: 1px solid grey;
 }
+
 input:active {
 	border: 1px solid dimgray;
 }
-button
-.status
-{
+
+.status {
 	font-family: monospace;
 	text-align: left;
 	margin-left: auto;

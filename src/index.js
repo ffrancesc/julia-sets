@@ -1,319 +1,206 @@
+class canvasController {
+	constructor(canvasId, statusLabelId, zoomInButtonId, zoomOutButtonId, iterInputId, downloadButtonId) {
+		var canvas = document.getElementById(canvasId);
+		this.wrapper = new canvasWrapper(canvas);
+		this.statusLabel = document.getElementById(statusLabelId);
+
+		var self = this
+
+		canvas.onmousedown = function(e) { 
+			self.dragStart(e); 
+		}
+
+		canvas.onmouseup = function () {
+			self.dragEnd(); 
+		}
+
+		canvas.onmousemove = function(e) {
+			self.drag(e);
+			self.updateStatus(e);
+		}
+
+		document.getElementById(downloadButtonId).onclick = function() {
+			var link = document.createElement('a');
+			link.download = 'image.png';
+			link.href = self.wrapper.canvas.toDataURL()
+			link.click();
+		}
+
+		document.getElementById(zoomInButtonId).onclick = function() {
+			self.wrapper.zoom *= ZOOM_FACTOR;
+			self.wrapper.update()
+		}
+		
+		document.getElementById(zoomOutButtonId).onclick = function() {
+			self.wrapper.zoom /= ZOOM_FACTOR;
+			self.wrapper.update()
+		}
+		
+		document.getElementById(iterInputId).onchange = function(e) {
+			self.wrapper.nIter = e.target.value;
+			self.wrapper.update();
+		}
+	}
+
+	registerJulia(jc) {
+		var self = this;
+		this.wrapper.canvas.ondblclick = () => { self.pinned = true; }
+		this.wrapper.canvas.addEventListener("mousemove", function(e) {
+			if (!self.pinned) {
+				var rect = self.wrapper.canvas.getBoundingClientRect(),
+					x = e.clientX - rect.left,
+					y = e.clientY - rect.top,
+				    z0 = self.wrapper.displayToComplex(x, y);
+				jc.wrapper.getIterateParameters = (z) => ({z0 : z, c : z0});
+				jc.wrapper.update();
+			}
+		});
+	}
+
+	dragStart(e) {
+		if (e.target === this.wrapper.canvas) {
+			this.dragging = true;
+			this.pinned = true;
+			this.initialX = e.clientX;
+			this.initialY = e.clientY;
+			this.image = this.wrapper.context.getImageData(0, 0, this.wrapper.canvas.width, this.wrapper.canvas.height);
+		}
+	}
+
+	dragEnd() {
+		this.wrapper.canvas.style.cursor = "crosshair";
+		this.wrapper.translate(this.lastOffset.x, this.lastOffset.y);
+		this.lastOffset = {x: 0, y: 0};
+		this.wrapper.update();
+		this.pinned = false;
+		this.dragging = false;
+	}
+
+	drag(e) {
+		if (this.dragging) {
+			e.preventDefault();
+			this.lastOffset = {
+				x : e.clientX - this.initialX,
+				y : e.clientY - this.initialY
+			};
+
+			this.wrapper.canvas.style.cursor = "move";
+			this.wrapper.context.clearRect(0, 0, this.wrapper.canvas.width, this.wrapper.canvas.height);
+			this.wrapper.context.putImageData(this.image, this.lastOffset.x, this.lastOffset.y);
+		}
+	}
+
+	updateStatus(e) {
+		var rect = this.wrapper.canvas.getBoundingClientRect(),
+			x = e.clientX - rect.left,
+			y = e.clientY - rect.top,
+			z = this.wrapper.displayToComplex(x, y),
+			str = "z = " + (z.re>0? "" : "  -") + Math.abs(z.re) + (z.im>0? " + " : " - ") + Math.abs(z.im) + "i";
+		this.statusLabel.innerHTML = str;
+	}
+}
+
+
+class canvasWrapper {
+	constructor(canvas) {
+		this.canvas = canvas;
+		this.context = canvas.getContext('2d');
+		this.pan = {x: 0, y: 0};
+		this.zoom = DEFAULT_ZOOM;
+		this.active = false;
+		this.nIter = 100;
+		this.getIterateParameters = (z) => ({z0 : new Complex(0, 0), c : z});
+		this.update();
+	}
+
+	displayToComplex(x, y) {
+		var w = this.canvas.width,
+		    h = this.canvas.height;
+		return new Complex( (x - 0.5*w) / this.zoom + this.pan.x, (y - 0.5*h) / this.zoom + this.pan.y);
+	}
+
+	translate(dx, dy) {
+		this.pan.x -= dx / this.zoom;
+		this.pan.y -= dy / this.zoom;
+	}
+
+	update() {
+		var	row = this.context.createImageData(this.canvas.width, 1);
+		for (var y = 0; y < this.canvas.height; ++y) {
+			var offset = 0;
+			for (var x = 0; x < this.canvas.width; ++x) {
+				var z = this.displayToComplex(x, y),
+					params = this.getIterateParameters(z),
+					fun = (z) => FUN(z, params.c),
+					con = (z) => (z.normSquared() < 4),
+					res = iterate(this.nIter, params.z0, fun, con),
+					rgb = getRGBColorFromIteration(res.n, this.nIter, res.z.norm());
+				row.data[offset++] = rgb.r;
+				row.data[offset++] = rgb.g;
+				row.data[offset++] = rgb.b;
+				row.data[offset++] = 255;	
+			}
+			this.context.putImageData(row, 0, y)
+		}
+	} 
+}
+
 class Complex {
 	constructor(re, im) { this.re = re; this.im = im; }
 	normSquared() { return this.re*this.re + this.im*this.im; }
 	norm() { return Math.sqrt(this.normSquared()); }
 }
 
-
-var zoomM = 250,
-zoomJ = 250,
-zoomFactor = 1.3,
-panXM = -0.8,
-panYM = 0,
-panXJ = 0,
-panYJ = 0,
-maxIterM = document.getElementById('maxIterM').value,
-maxIterJ = document.getElementById('maxIterJ').value,
-JuliaListening = true,
-canvasM = document.getElementById('canvasM'),
-contextM = canvasM.getContext('2d'),
-imageM,
-
-canvasJ = document.getElementById('canvasJ'),
-contextJ = canvasJ.getContext('2d'),
-imageJ,
-
-logBase = 1.0 / Math.log(2.0),
-logHalfBase = Math.log(0.5)*logBase,
-interiorColor = [0, 0, 0, 255],
-lastZ;
-
-
-function displayToComplexM(x, y, ){
-	return new Complex((x - canvasM.width/2.0)/zoomM + panXM, -(canvasM.height/2.0 - y)/zoomM + panYM);
-}
-function displayToComplexJ(x, y){
-	return new Complex((x - canvasJ.width/2.0)/zoomJ + panXJ, -(canvasJ.height/2.0 - y)/zoomJ + panYJ);
+// Sinking ship (> Mandelbrot ;) )
+function g(z, c) {
+	z.re = Math.abs(z.re);
+	z.im = Math.abs(z.im);
+	var re = z.re*z.re - z.im*z.im + c.re,
+		im = 2*z.re*z.im + c.im;
+	return new Complex(re, im)
 }
 
-function abs(a) {  if (a < 0) return -a; else return a; }
-
-function g(z, c, r){
-	z.re = abs(z.re);
-	z.im = abs(z.im);
-	var re = z.re*z.re - z.im*z.im + c.re;
-	r.im = 2*z.re*z.im + c.im;
-	r.re = re;
+// f (z, c) = z^2 + c
+function f(z, c) {
+	var re = z.re*z.re - z.im*z.im + c.re,
+	    im = 2*z.re*z.im + c.im;
+	return new Complex(re, im);
 }
 
-function f(z, c, r){
-	var re = z.re*z.re - z.im*z.im + c.re;
-	r.im = 2*z.re*z.im + c.im;
-	r.re = re;
-}
-
-function computeMandelbrot(){
-	var	row = contextM.createImageData(canvasM.width, 1),
-		offset,
-		z, res,
-		rgb;
-	for (var y = 0; y < canvasM.height; ++y){
-		offset = 0;
-		for (var x = 0; x < canvasM.width; ++x) {
-			z = displayToComplexM(x, y);
-			rgb = getRGBColor(iterate(maxIterM, 2, z));
-			row.data[offset++] = rgb.r;
-			row.data[offset++] = rgb.g;
-			row.data[offset++] = rgb.b;
-			row.data[offset++] = 255;	
-		}
-		contextM.putImageData(row, 0, y)
-	}
-	//drawAxis();
-}
-
-function computeJulia(c){
-	lastZ = c;
-	var	row = contextJ.createImageData(canvasJ.width, 1),
-		offset,
-		z0, res,
-		maxIter = 100,
-		rgb;
-	for (var y = 0; y < canvasJ.height; ++y){
-		offset = 0;
-		for (var x = 0; x < canvasJ.width; ++x) {
-			z0 = displayToComplexJ(x, y);
-			res = iterate(maxIterJ, 2, c, z0)
-			rgb = getRGBColor(res);
-			row.data[offset++] = rgb.r;
-			row.data[offset++] = rgb.g;
-			row.data[offset++] = rgb.b;
-			row.data[offset++] = 255;	
-		}
-		contextJ.putImageData(row, 0, y)
-	}
-}
-
-
-function iterate(maxIterat, radius, c, z0){
-	if(z0 == null) z = new Complex(0,0);
-	maxIterat = Math.round(maxIterat);
-	var i = 0;
-		z = z0 != null? z0 : new Complex(0,0),
-		radiusSquared = radius*radius;
-	while(i < maxIterat && z.normSquared() < radiusSquared) {
-		f(z, c, z);
-		++i;
-		//smoothColor += Math.exp(-z.norm());
-	}
+function iterate(nmax, z0, fun, cond) {
+	nmax = Math.round(nmax);
+	var i = 0,
+		z = z0;
+	while (++i < nmax && cond(z)) 
+		z = fun(z);
 	return {
-		nIter: i,
-		maxIter: maxIterat,
-		nNorm: z.norm(),
+		n: i,
+		z: z
 	}; 
 }
 
-
-function getRGBColor(e){
-	var nIter = e.nIter,
-		maxIter = e.maxIter,
-		nNorm = e.nNorm;
-		//smoothIter = 5 + nIter - logHalfBase - Math.log(Math.log(nNorm))*logBase;
-		smoothIter = nIter - Math.log2(Math.log2(nNorm)) + 4.0
-		if (nIter == maxIter) return interiorColor;
-		var v1 = Math.floor(512.0*smoothIter/maxIter);
-		if (v1 > 255) v1 = 255;
-		return {
-			r: v1,
-			g: Math.floor(200.0*smoothIter/maxIter),
-			b: v1
-		};
-}
-
-
-var activeM,
-activeJ,
-initialX,
-initialY;
-
-var currentX;
-var currentY;
-var initialX;
-var initialY;
-var xOffset = 0;
-var yOffset = 0;
-
-
-document.getElementById('zoomInM').onclick = function() {
-	zoomM *= zoomFactor;
-	computeMandelbrot();
-}
-document.getElementById('zoomOutM').onclick = function() {
-	zoomM /= zoomFactor;
-	computeMandelbrot();
-}
-document.getElementById('maxIterM').onchange = function() {
-	maxIterM = document.getElementById('maxIterM').value;
-	computeMandelbrot();
-}
-document.getElementById('zoomInJ').onclick = function() {
-	zoomJ *= zoomFactor;
-	computeJulia(lastZ);
-}
-document.getElementById('zoomOutJ').onclick = function() {
-	zoomJ /= zoomFactor;
-	computeJulia(lastZ);
-}
-document.getElementById('maxIterJ').onchange = function() {
-	maxIterJ = document.getElementById('maxIterJ').value;
-	computeJulia(lastZ);
-}
-document.getElementById('downloadM').onclick = function() {
-	var link = document.createElement('a');
-	link.download = 'mandelbrot.png';
-	link.href = document.getElementById('canvasM').toDataURL()
-	link.click();
-}
-document.getElementById('downloadJ').onclick = function() {
-	var link = document.createElement('a');
-	link.download = 'julia.png';
-	link.href = document.getElementById('canvasJ').toDataURL()
-	link.click();
-}
-canvasM.addEventListener("touchstart", dragStart);
-canvasM.addEventListener("touchend", dragEnd);
-canvasM.addEventListener("touchmove", drag);
-
-canvasM.addEventListener("mousedown", dragStart);
-canvasM.addEventListener("mouseup", dragEnd);
-canvasM.addEventListener("mousemove", drag);
-canvasM.addEventListener("mousemove", computeStatusM);
-canvasM.onload = computeMandelbrot();
-canvasM.addEventListener ("mouseout", function() { JuliaListening = true; });
-
-
-canvasJ.addEventListener("touchstart", dragStart);
-canvasJ.addEventListener("touchend", dragEnd);
-canvasJ.addEventListener("touchmove", drag);
-
-canvasJ.addEventListener("mousedown", dragStart);
-canvasJ.addEventListener("mouseup", dragEnd);
-canvasJ.addEventListener("mousemove", drag);
-canvasJ.addEventListener("mousemove", computeStatusJ);
-
-
-function dragStart(e) {
-	if (e.type === "touchstart") {
-		initialX = e.touches[0].clientX - xOffset;
-		initialY = e.touches[0].clientY - yOffset;
-	} else {
-		initialX = e.clientX - xOffset;
-		initialY = e.clientY - yOffset;
-	}
-	if (e.target === canvasM) {
-		activeM = true;
-		JuliaListening = !JuliaListening;
-		imageM = contextM.getImageData(0, 0, canvasM.width, canvasM.height);
-	}
-	else if (e.target == canvasJ) {
-		activeJ = true;
-		imageJ = contextJ.getImageData(0, 0, canvasJ.width, canvasJ.height);
-	}
-}
-
-function dragEnd(e) {
-	initialX = currentX;
-	initialY = currentY;
-	if(activeM){
-		document.getElementById("canvasM").style.cursor = "crosshair";
-		panXM -= xOffset/zoomM;
-		panYM -= yOffset/zoomM;
-		activeM = false;
-		computeMandelbrot();
-	}
-	else if(activeJ){
-		document.getElementById("canvasJ").style.cursor = "crosshair";
-		panXJ -= xOffset/zoomJ;
-		panYJ -= yOffset/zoomJ;
-		activeJ = false;
-		computeJulia(lastZ);
-	}
-	xOffset = 0;
-	yOffset = 0;
-}
-
-function drag(e) {
-	if (activeM || activeJ ) {
-
-		e.preventDefault();
-
-		if (e.type === "touchmove") {
-			currentX = e.touches[0].clientX - initialX;
-			currentY = e.touches[0].clientY - initialY;
-		} else {
-			currentX = e.clientX - initialX;
-			currentY = e.clientY - initialY;
-		}
-
-		xOffset = currentX;
-		yOffset = currentY;
-		if(activeM) {
-			document.getElementById("canvasM").style.cursor = "move";
-			contextM.clearRect(0, 0, canvasM.width, canvasM.height);
-			contextM.putImageData(imageM, xOffset, yOffset);
-		}
-		else if(activeJ) {
-			document.getElementById("canvasJ").style.cursor = "move";
-			contextJ.clearRect(0, 0, canvasJ.width, canvasJ.height);
-			contextJ.putImageData(imageJ, xOffset, yOffset);
-		}
-	}
-}
-
-function HSVtoRGB(h, s, v) {
-	var r, g, b, i, f, p, q, t;
-	if (arguments.length === 1) {
-	    s = h.s, v = h.v, h = h.h;
-	}
-	i = Math.floor(h * 6);
-	f = h * 6 - i;
-	p = v * (1 - s);
-	q = v * (1 - f * s);
-	t = v * (1 - (1 - f) * s);
-	switch (i % 6) {
-	    case 0: r = v, g = t, b = p; break;
-	    case 1: r = q, g = v, b = p; break;
-	    case 2: r = p, g = v, b = t; break;
-	    case 3: r = p, g = q, b = v; break;
-	    case 4: r = t, g = p, b = v; break;
-	    case 5: r = v, g = p, b = q; break;
-	}
+function getRGBColorFromIteration(nIter, maxIter, lastNorm) {
+	//var smoothIter = 5 + nIter - LOG_HALFBASE - Math.log(Math.log(lastNorm))*LOG_BASE;
+	var smoothIter = nIter - Math.log2(Math.log2(lastNorm)) + 4.0
+	if (nIter == maxIter) return {r: 0, g: 0, b: 0};
+	var v1 = Math.floor(512.0*smoothIter/maxIter);
+	if (v1 > 255) v1 = 255;
 	return {
-	    r: Math.round(r * 255),
-	    g: Math.round(g * 255),
-	    b: Math.round(b * 255)
+		r: v1,
+		g: Math.floor(200.0*smoothIter/maxIter),
+		b: v1
 	};
 }
 
-function computeStatusM(e){
-	if(activeM) return;
-	var rect = canvasM.getBoundingClientRect();
-		x = e.clientX - rect.left;
-		y = e.clientY - rect.top;
-		z = displayToComplexM(x, y);
-		str = /*"[nIter, maxIter, nNorm] = [" + e.nIter + ", " + e.maxIter + ", " + e.nNorm + "] */
-		"z = " + (z.re>0? "" : "  -") + Math.abs(z.re) + (z.im>0? " + " : " - ") + Math.abs(z.im) + "i";
-	document.getElementById("statusM").innerHTML = str;
-	if(JuliaListening) computeJulia(z);
-}
+/////////////////////////////////////////////
 
-function computeStatusJ(e){
-	if(activeJ) return;
-	var rect = canvasJ.getBoundingClientRect();
-		x = e.clientX - rect.left;
-		y = e.clientY - rect.top;
-		z = displayToComplexJ(x, y);
-		str = /*"[nIter, maxIter, nNorm] = [" + e.nIter + ", " + e.maxIter + ", " + e.nNorm + "] */
-		"z = " + (z.re>0? "" : "  -") + Math.abs(z.re) + (z.im>0? " + " : " - ") + Math.abs(z.im) + "i";
-	document.getElementById("statusJ").innerHTML = str;
-}
+const DEFAULT_ZOOM = 250,
+	  ZOOM_FACTOR = 1.3,
+	  LOG_BASE = 1.0 / Math.log(2.0),
+	  LOG_HALFBASE = Math.log(0.5)*LOG_BASE,
+	  FUN = f;
+
+mandeController = new canvasController('canvasM', 'statusM', 'zoomInM', 'zoomOutM', 'maxIterM', 'downloadM');
+juliaController = new canvasController('canvasJ', 'statusJ', 'zoomInJ', 'zoomOutJ', 'maxIterJ', 'downloadJ');
+mandeController.registerJulia(juliaController);
+mandeController.wrapper.translate(2, 0)
